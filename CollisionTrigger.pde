@@ -1,7 +1,7 @@
 public class CollisionTrigger {
     boolean isActive = false;
 
-    public void onCollision(Vec3 point) {
+    public void onCollision(Vec3 point, Vec3 normal) {
         isActive = true;
         return;
     }
@@ -20,15 +20,17 @@ public class SpawnEmitter extends CollisionTrigger {
     public SpawnEmitter() {
         emitter = new ParticleSystem(100);
         emitter.streakLength = 0;
-        emitter.particleLifespanMax = 0.5;
-        emitter.particleLifespanMin = 0.4;
-        emitter.birthRate = 80;
-        emitter.emitterLifespan = 0.06;
+        emitter.particleLifespanMax = 0.3;
+        emitter.particleLifespanMin = 0.2;
+        emitter.birthRate = 10;
+        emitter.emitterLifespan = 0.1;
         emitter.r = 1.3;
-        emitter.particleSpeed = 60;
+        emitter.particleSpeed = 40;
+        emitter.speedRange = 20;
         emitter.particleDirection = new Vec3(0,1,0);
-        emitter.particleDirectionRange = 0.3;
-        emitter.particleAcceleration = new Vec3(0,-9.8,0);
+        emitter.particleDirectionRange = 0.1;
+        emitter.particleAcceleration = new Vec3(0,-500,0);
+        emitter.particleAccelerationRange = 0.1;
     }
 
     @Override
@@ -37,10 +39,11 @@ public class SpawnEmitter extends CollisionTrigger {
     }
 
     @Override
-    public void onCollision(Vec3 point) {
+    public void onCollision(Vec3 point, Vec3 normal) {
         // TODO : Spawn a new emitter at the point of collision
-        super.onCollision(point);
+        super.onCollision(point, normal);
         emitter.emitterPosition = point;
+        emitter.particleDirection = normal;
     }
 
     public void draw(float dt) {
@@ -57,10 +60,10 @@ public class SpawnEmitter extends CollisionTrigger {
 
 public class AnimateRaindropCollision extends CollisionTrigger {
     @Override
-    public void onCollision(Vec3 point) {
+    public void onCollision(Vec3 point, Vec3 normal) {
         // TODO : Spawn a textured quad that animates through a series
         // of raindrop splash images
-        super.onCollision(point);
+        super.onCollision(point, normal);
     }
 }
 

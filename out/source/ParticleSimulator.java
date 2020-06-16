@@ -12,7 +12,7 @@ import java.io.InputStream;
 import java.io.OutputStream; 
 import java.io.IOException; 
 
-public class ParticleSim extends PApplet {
+public class ParticleSimulator extends PApplet {
 
 // Shaders Found on the processing website: https://processing.org/tutorials/pshader/
 
@@ -93,59 +93,136 @@ public void draw() {
   shape(house,0,0);
   update(1.0f/frameRate);
 }
-// public class BoidSystem {
-//     private ArrayList<Vec3> boidCoords;
-//     private ArrayList<Quaternion> boidOrientations;
-//     private ArrayList<Vec3> boidVelocities;
+public class BoidSystem {
+    private ArrayList<Vec3> boidCoords;
+    // private ArrayList<Quaternion> boidOrientations;
+    private ArrayList<Vec3> boidVelocities;
 
-//     int boidCount = 0;
+    int boidCount = 10;
+    Vec3 boidCenterOfMass;
+    float boidSize = 10;
+    PImage boidTexture = null;
+    PShape boidModel = null;
 
-//     public BoidSystem() {
-//         boidCoords = new ArrayList<Vec3>();
-//         boidOrientations = new ArrayList<Quaternion>();
-//         boidVelocities = new ArrayList<Vec3>();
-//     }
+    public BoidSystem() {
+        boidCoords = new ArrayList<Vec3>();
+        // boidOrientations = new ArrayList<Quaternion>();
+        boidVelocities = new ArrayList<Vec3>();
+        initializePositions();
+    }
     
-//     public void initializePositions() {
+    public void initializePositions() {
+        for (int i = 0; i < boidCount; i++) {
+
+        }
+    }
+
+    public void updateBoidPositions(float dt) {
+        Vec3 v1, v2, v3;
+        for (int i = 0; i < boidCount; i++) {
+            v1 = flyTowardsCenter(i);
+            v2 = keepDistance(i);
+            v3 = matchVelocity(i);
+
+            boidVelocities.get(i).add(v1.plus(v2).plus(v3));
+            boidCoords.get(i).add(boidVelocities.get(i));
+        }
+
+        boidCenterOfMass = new Vec3(0,0,0);
+        for (int i = 0; i < boidCount; i++) {
+            boidCenterOfMass.add(boidCoords.get(i));
+        }
+        boidCenterOfMass = boidCenterOfMass.times(1.f/boidCount);
+    }
+
+    public void drawBoids() {
+        if (boidTexture != null) {
+            for (int i = 0; i < boidCount; i++) {
+                // Draw texture
+                Vec3 pos = boidCoords.get(i);
+                push();
+                translate(pos.x, pos.y, pos.z);
+                beginShape();
+                texture(boidTexture);
+                vertex(-boidSize/2,boidSize/2,0,0,0);
+                vertex(boidSize/2,boidSize/2,0,boidTexture.width,0);
+                vertex(boidSize/2,-boidSize/2,0,boidTexture.width,boidTexture.height);
+                vertex(-boidSize/2,-boidSize/2,0,0,boidTexture.height);
+                endShape();
+                pop();
+            }
+        }
+        else if (boidModel != null) {
+            for (int i = 0; i < boidCount; i++) {
+                // Draw boid model
+                Vec3 pos = boidCoords.get(i);
+                push();
+                translate(pos.x, pos.y, pos.z);
+                shape(boidModel);
+                pop();
+            }
+        }
+        else {
+            for (int i = 0; i < boidCount; i++) {
+                // Draw a point
+                Vec3 pos = boidCoords.get(i);
+                push();
+                stroke(boidSize);
+                point(pos.x, pos.y, pos.z);
+                pop();
+            }
+        }
+    }
+
+    private Vec3 flyTowardsCenter(int idx) {
+        // given an index of a certain boid,
+        // find the center of mass of nearby boids
+        // and return a weight in that direction
         
-//     }
+        // Fly towards the center of mass excluding the current boid
+        Vec3 perceivedCenterOfMass = boidCenterOfMass.times(boidCount).minus(boidCoords.get(idx)).times(1/(boidCount - 1));
+        return perceivedCenterOfMass.minus(boidCoords.get(idx)).times(0.01f);
+    }
 
-//     public void updateBoidPositions(float dt) {
-//         for (int i = 0; i < boidCount; i++) {
-//             Vec3 v1 = flyTowardsCenter(i);
-//             Vec3 v2 = keepDistance(i);
-//             Vec3 v3 = matchVelocity(i);
+    private Vec3 keepDistance(int idx) {
+        // look at all the nearby boids and objects
+        // and return a weight that maneuvers away from them
+        Vec3 c = new Vec3(0,0,0);
+        Vec3 curBoidPosition = boidCoords.get(idx);
+        for (int i = 0; i < boidCount; i++) {
+            if (i == idx) {
+                continue;
+            }
+            Vec3 otherBoidPosition = boidCoords.get(i);
+            Vec3 betweenVec = otherBoidPosition.minus(curBoidPosition);
+            if (betweenVec.length() < 100) {
+                c.subtract(betweenVec);
+            }
+        }
+        return c;
+    }
 
-//             boidVelocities.get(i).add(v1.plus(v2).plus(v3));
-//             boidPositions.get(i).add(boidVelocities.get(i));
-//         }
-//     }
-
-//     public void drawBoids() {
-//         for (int i = 0; i < boidCount; i++) {
-
-//         }
-//     }
-
-//     private Vec3 flyTowardsCenter(int idx) {
-//         // given an index of a certain boid,
-//         // find the center of mass of nearby boids
-//         // and return a weight in that direction
-//     }
-
-//     private Vec3 keepDistance(int idx) {
-//         // look at all the nearby boids and objects
-//         // and return a weight that maneuvers away from them
-//     }
-
-//     private Vec3 matchVelocity(int idx) {
-//         // find the velocities of nearby boids and approximate it
-//     }
-// }
+    private Vec3 matchVelocity(int idx) {
+        // find the velocities of nearby boids and approximate it
+        Vec3 curBoidVelocty = boidVelocities.get(idx);
+        Vec3 newPosition = new Vec3(0,0,0);;
+        for (int i = 0; i < boidCount; i++) {
+            Vec3 otherBoidVelocity = boidVelocities.get(i);
+            if (i == idx) {
+                continue;
+            }
+            newPosition.add(otherBoidVelocity);
+        }
+        newPosition.mul(boidCount - 1);
+        newPosition.subtract(curBoidVelocty);
+        newPosition.mul(1f/8f);
+        return newPosition;
+    }
+}
 public class CollisionTrigger {
     boolean isActive = false;
 
-    public void onCollision(Vec3 point) {
+    public void onCollision(Vec3 point, Vec3 normal) {
         isActive = true;
         return;
     }
@@ -164,15 +241,17 @@ public class SpawnEmitter extends CollisionTrigger {
     public SpawnEmitter() {
         emitter = new ParticleSystem(100);
         emitter.streakLength = 0;
-        emitter.particleLifespanMax = 0.5f;
-        emitter.particleLifespanMin = 0.4f;
-        emitter.birthRate = 80;
-        emitter.emitterLifespan = 0.06f;
+        emitter.particleLifespanMax = 0.3f;
+        emitter.particleLifespanMin = 0.2f;
+        emitter.birthRate = 10;
+        emitter.emitterLifespan = 0.1f;
         emitter.r = 1.3f;
-        emitter.particleSpeed = 60;
+        emitter.particleSpeed = 40;
+        emitter.speedRange = 20;
         emitter.particleDirection = new Vec3(0,1,0);
-        emitter.particleDirectionRange = 0.3f;
-        emitter.particleAcceleration = new Vec3(0,-9.8f,0);
+        emitter.particleDirectionRange = 0.1f;
+        emitter.particleAcceleration = new Vec3(0,-500,0);
+        emitter.particleAccelerationRange = 0.1f;
     }
 
     @Override
@@ -181,10 +260,11 @@ public class SpawnEmitter extends CollisionTrigger {
     }
 
     @Override
-    public void onCollision(Vec3 point) {
+    public void onCollision(Vec3 point, Vec3 normal) {
         // TODO : Spawn a new emitter at the point of collision
-        super.onCollision(point);
+        super.onCollision(point, normal);
         emitter.emitterPosition = point;
+        emitter.particleDirection = normal;
     }
 
     public void draw(float dt) {
@@ -201,10 +281,10 @@ public class SpawnEmitter extends CollisionTrigger {
 
 public class AnimateRaindropCollision extends CollisionTrigger {
     @Override
-    public void onCollision(Vec3 point) {
+    public void onCollision(Vec3 point, Vec3 normal) {
         // TODO : Spawn a textured quad that animates through a series
         // of raindrop splash images
-        super.onCollision(point);
+        super.onCollision(point, normal);
     }
 }
 
@@ -238,6 +318,7 @@ public class TriggerCollection {
 
 public class ParticleSystem {
   protected ArrayList<Vec3> particleCoords;
+  protected ArrayList<Vec3> previousParticleCoords;
   protected ArrayList<Vec3> particleVelocities;
   protected ArrayList<Vec3> particleAccelerations;
   protected ArrayList<Float> particleLifespan;
@@ -246,7 +327,7 @@ public class ParticleSystem {
   protected ArrayList<Float> particleStreakLength;
 
   int partIdx = 0;
-  int streakLength = 5;
+  int streakLength = 2;
   int particleCount = 0;
   int maxParticleCount;
   float particleLifespanMax = 5;
@@ -254,8 +335,8 @@ public class ParticleSystem {
   float emitterLifespan = -1;
   float emitterElapsedTime = 0;
   boolean isActive = true;
-  float birthRate = 500;
-  float r = 0.3f;
+  float birthRate = 100;
+  float r = 0.2f;
   float particleSpeed = 200;
   float speedRange = 50;
   Vec3 particleDirection = new Vec3(0.05f,-1,0);
@@ -271,6 +352,7 @@ public class ParticleSystem {
   
   public ParticleSystem(int maxParticleCount) {
     particleCoords = new ArrayList<Vec3>();
+    previousParticleCoords = new ArrayList<Vec3>();
     particleVelocities = new ArrayList<Vec3>();
     particleAccelerations = new ArrayList<Vec3>();
     particleLifespan = new ArrayList<Float>();
@@ -286,7 +368,6 @@ public class ParticleSystem {
     // Initialize the new particles time, velocities, accelerations, lifespan etc.
     if (emitterLifespan > 0 && emitterElapsedTime >= emitterLifespan) {
       birthRate = 0;
-      isActive = false;
       return;
     }
     emitterElapsedTime += dt;
@@ -302,6 +383,7 @@ public class ParticleSystem {
     }
     for(int i = 0; i < stochasticNewParticles; i++) {
       particleCoords.add(new Vec3(emitterPosition));
+      previousParticleCoords.add(new Vec3(emitterPosition));
       Vec3 particleDir = new Vec3(particleDirection);
       Vec3 randomParticleDir = new Vec3(random(-particleDirectionRange,particleDirectionRange),
                                   random(-particleDirectionRange,particleDirectionRange),
@@ -329,6 +411,7 @@ public class ParticleSystem {
     // using the particle velocities, acceleration and current position,
     // find its new position.
     for(int i = 0; i < particleCount; i++) {
+      previousParticleCoords.set(i, new Vec3(particleCoords.get(i)));
       Vec3 vel = particleVelocities.get(i);
       Vec3 accel = particleAccelerations.get(i);
       Vec3 translation = vel.times(dt).plus(accel.times(0.5f).times(dt*dt));
@@ -362,7 +445,15 @@ public class ParticleSystem {
           Vec3 collisionPoint = new Vec3(0,0,0);
 
           Vec3 rayOrigin = particlePosition;
-          Vec3 rayDirection = particleVelocities.get(j).normalized();
+          Vec3 rayDirection = previousParticleCoords.get(j).minus(particlePosition);
+          float maxT = rayDirection.length();
+
+          if (maxT < 0.00001f) {
+            j++;
+            continue;
+          }
+
+          rayDirection.normalize();
 
           PVector v1 = triangle.getVertex(0);
           PVector v2 = triangle.getVertex(1);
@@ -390,17 +481,21 @@ public class ParticleSystem {
           float numerator = -(dot(surfaceNormal, rayOrigin) - D);
 
           float t = numerator/denominator;
+
+          if (t < 0) {
+            // Haven't hit yet
+            j++;
+            continue;
+          }
           
           Vec3 p = rayOrigin.plus(rayDirection.times(t));
 
-          if (abs(t) < 2.5f && pointLiesOnTriangle(p, vert1, vert2, vert3, e1, e2)) {
+          if (t < maxT && pointLiesOnTriangle(p, vert1, vert2, vert3, e1, e2)) {
             CollisionTrigger newTrig = collisionTrigger.copy();
-            newTrig.onCollision(p);
+            newTrig.onCollision(p, surfaceNormal.normalized());
             triggerCollection.add(newTrig);
             // remove particle
             removeParticleAtIndex(j);
-            // particleColors.set(j, new Vec3(255,0,0));
-            // particleRadii.set(j, 2.f);
             j--;
           }
           j++;
@@ -427,10 +522,14 @@ public class ParticleSystem {
       }
       i++;
     }
+    if (particleCount == 0 && emitterElapsedTime >= emitterLifespan) {
+      isActive = true;
+    }
   }
 
   public void removeParticleAtIndex(int i) {
     particleCoords.remove(i);
+    previousParticleCoords.remove(i);
     particleVelocities.remove(i);
     particleAccelerations.remove(i);
     particleLifespan.remove(i);
@@ -457,6 +556,7 @@ public class ParticleSystem {
     if (partIdx < particleCount) {
       push();
       stroke(particleColors.get(partIdx).x, particleColors.get(partIdx).y, particleColors.get(partIdx).z);
+      // stroke(#E0D3ED, 1.f);
       strokeWeight(particleRadii.get(partIdx));
       Vec3 vel = new Vec3(particleVelocities.get(partIdx));
       float velMagnitude = vel.length();
@@ -534,6 +634,7 @@ public class PlanarParticleSystem extends ParticleSystem {
       float d = dot(emitterPosition.times(-1), emitterPlaneNormal);
       float k = -(dot(emitterPlaneNormal, radialPosition) + d);
       Vec3 projPointOntoPlane = radialPosition.plus(emitterPlaneNormal.times(k));
+      previousParticleCoords.add(emitterPosition.plus(projPointOntoPlane));
       particleCoords.add(emitterPosition.plus(projPointOntoPlane));
       Vec3 particleDir = new Vec3(particleDirection);
       Vec3 randomParticleDir = new Vec3(random(-particleDirectionRange,particleDirectionRange),
@@ -878,7 +979,7 @@ class Camera
 };
   public void settings() {  size(640,480,P3D); }
   static public void main(String[] passedArgs) {
-    String[] appletArgs = new String[] { "ParticleSim" };
+    String[] appletArgs = new String[] { "ParticleSimulator" };
     if (passedArgs != null) {
       PApplet.main(concat(appletArgs, passedArgs));
     } else {

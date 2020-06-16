@@ -1,6 +1,7 @@
 
 public class ParticleSystem {
   protected ArrayList<Vec3> particleCoords;
+  protected ArrayList<Vec3> previousParticleCoords;
   protected ArrayList<Vec3> particleVelocities;
   protected ArrayList<Vec3> particleAccelerations;
   protected ArrayList<Float> particleLifespan;
@@ -9,7 +10,7 @@ public class ParticleSystem {
   protected ArrayList<Float> particleStreakLength;
 
   int partIdx = 0;
-  int streakLength = 5;
+  int streakLength = 2;
   int particleCount = 0;
   int maxParticleCount;
   float particleLifespanMax = 5;
@@ -17,8 +18,8 @@ public class ParticleSystem {
   float emitterLifespan = -1;
   float emitterElapsedTime = 0;
   boolean isActive = true;
-  float birthRate = 500;
-  float r = 0.3;
+  float birthRate = 100;
+  float r = 0.2;
   float particleSpeed = 200;
   float speedRange = 50;
   Vec3 particleDirection = new Vec3(0.05,-1,0);
@@ -34,6 +35,7 @@ public class ParticleSystem {
   
   public ParticleSystem(int maxParticleCount) {
     particleCoords = new ArrayList<Vec3>();
+    previousParticleCoords = new ArrayList<Vec3>();
     particleVelocities = new ArrayList<Vec3>();
     particleAccelerations = new ArrayList<Vec3>();
     particleLifespan = new ArrayList<Float>();
@@ -49,7 +51,6 @@ public class ParticleSystem {
     // Initialize the new particles time, velocities, accelerations, lifespan etc.
     if (emitterLifespan > 0 && emitterElapsedTime >= emitterLifespan) {
       birthRate = 0;
-      isActive = false;
       return;
     }
     emitterElapsedTime += dt;
@@ -65,6 +66,7 @@ public class ParticleSystem {
     }
     for(int i = 0; i < stochasticNewParticles; i++) {
       particleCoords.add(new Vec3(emitterPosition));
+      previousParticleCoords.add(new Vec3(emitterPosition));
       Vec3 particleDir = new Vec3(particleDirection);
       Vec3 randomParticleDir = new Vec3(random(-particleDirectionRange,particleDirectionRange),
                                   random(-particleDirectionRange,particleDirectionRange),
@@ -92,6 +94,7 @@ public class ParticleSystem {
     // using the particle velocities, acceleration and current position,
     // find its new position.
     for(int i = 0; i < particleCount; i++) {
+      previousParticleCoords.set(i, new Vec3(particleCoords.get(i)));
       Vec3 vel = particleVelocities.get(i);
       Vec3 accel = particleAccelerations.get(i);
       Vec3 translation = vel.times(dt).plus(accel.times(0.5).times(dt*dt));
@@ -125,7 +128,15 @@ public class ParticleSystem {
           Vec3 collisionPoint = new Vec3(0,0,0);
 
           Vec3 rayOrigin = particlePosition;
-          Vec3 rayDirection = particleVelocities.get(j).normalized();
+          Vec3 rayDirection = previousParticleCoords.get(j).minus(particlePosition);
+          float maxT = rayDirection.length();
+
+          if (maxT < 0.00001) {
+            j++;
+            continue;
+          }
+
+          rayDirection.normalize();
 
           PVector v1 = triangle.getVertex(0);
           PVector v2 = triangle.getVertex(1);
@@ -153,17 +164,21 @@ public class ParticleSystem {
           float numerator = -(dot(surfaceNormal, rayOrigin) - D);
 
           float t = numerator/denominator;
+
+          if (t < 0) {
+            // Haven't hit yet
+            j++;
+            continue;
+          }
           
           Vec3 p = rayOrigin.plus(rayDirection.times(t));
 
-          if (abs(t) < 2.5 && pointLiesOnTriangle(p, vert1, vert2, vert3, e1, e2)) {
+          if (t < maxT && pointLiesOnTriangle(p, vert1, vert2, vert3, e1, e2)) {
             CollisionTrigger newTrig = collisionTrigger.copy();
-            newTrig.onCollision(p);
+            newTrig.onCollision(p, surfaceNormal.normalized());
             triggerCollection.add(newTrig);
             // remove particle
             removeParticleAtIndex(j);
-            // particleColors.set(j, new Vec3(255,0,0));
-            // particleRadii.set(j, 2.f);
             j--;
           }
           j++;
@@ -190,10 +205,14 @@ public class ParticleSystem {
       }
       i++;
     }
+    if (particleCount == 0 && emitterElapsedTime >= emitterLifespan) {
+      isActive = true;
+    }
   }
 
   public void removeParticleAtIndex(int i) {
     particleCoords.remove(i);
+    previousParticleCoords.remove(i);
     particleVelocities.remove(i);
     particleAccelerations.remove(i);
     particleLifespan.remove(i);
@@ -220,6 +239,7 @@ public class ParticleSystem {
     if (partIdx < particleCount) {
       push();
       stroke(particleColors.get(partIdx).x, particleColors.get(partIdx).y, particleColors.get(partIdx).z);
+      // stroke(#E0D3ED, 1.f);
       strokeWeight(particleRadii.get(partIdx));
       Vec3 vel = new Vec3(particleVelocities.get(partIdx));
       float velMagnitude = vel.length();
@@ -297,6 +317,7 @@ public class PlanarParticleSystem extends ParticleSystem {
       float d = dot(emitterPosition.times(-1), emitterPlaneNormal);
       float k = -(dot(emitterPlaneNormal, radialPosition) + d);
       Vec3 projPointOntoPlane = radialPosition.plus(emitterPlaneNormal.times(k));
+      previousParticleCoords.add(emitterPosition.plus(projPointOntoPlane));
       particleCoords.add(emitterPosition.plus(projPointOntoPlane));
       Vec3 particleDir = new Vec3(particleDirection);
       Vec3 randomParticleDir = new Vec3(random(-particleDirectionRange,particleDirectionRange),
