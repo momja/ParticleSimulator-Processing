@@ -25,8 +25,8 @@ public class SpawnEmitter extends CollisionTrigger {
         emitter.birthRate = 10;
         emitter.emitterLifespan = 0.1;
         emitter.r = 1.3;
-        emitter.particleSpeed = 40;
-        emitter.speedRange = 20;
+        emitter.particleSpeed = 20;
+        emitter.speedRange = 10;
         emitter.particleDirection = new Vec3(0,1,0);
         emitter.particleDirectionRange = 0.1;
         emitter.particleAcceleration = new Vec3(0,-500,0);

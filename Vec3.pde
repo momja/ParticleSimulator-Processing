@@ -75,6 +75,17 @@ public class Vec3 {
   public float distanceTo(Vec3 rhs){
     return this.minus(rhs).length();
   }
+
+  public void clamp(float minLength, float maxLength) {
+    float curLength = length();
+    if (curLength > maxLength) {
+      this.normalize();
+      this.mul(maxLength);
+    } else if (curLength < minLength) {
+      this.normalize();
+      this.mul(minLength);
+    }
+  }
 }
 
 Vec3 interpolate(Vec3 a, Vec3 b, float t){
@@ -91,6 +102,11 @@ Vec3 cross(Vec3 a, Vec3 b){
 
 Vec3 projAB(Vec3 a, Vec3 b){
   return b.times(dot(a, b));
+}
+
+Vec3 reflect(Vec3 d, Vec3 n) {
+  Vec3 r = d.minus(n.times(dot(d,n.normalized())*2));
+  return r;
 }
 
 boolean pointLiesOnTriangle(Vec3 point, Vec3 vert1, Vec3 vert2, Vec3 vert3, Vec3 e1, Vec3 e2) {

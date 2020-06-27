@@ -10,7 +10,7 @@ public class ParticleSystem {
   protected ArrayList<Float> particleStreakLength;
 
   int partIdx = 0;
-  int streakLength = 2;
+  int streakLength = 0;
   int particleCount = 0;
   int maxParticleCount;
   float particleLifespanMax = 5;
@@ -22,8 +22,8 @@ public class ParticleSystem {
   float r = 0.2;
   float particleSpeed = 200;
   float speedRange = 50;
-  Vec3 particleDirection = new Vec3(0.05,-1,0);
-  float particleDirectionRange = 0.05;
+  Vec3 particleDirection = new Vec3(0,-1,0);
+  float particleDirectionRange = 0.07;
   Vec3 particleAcceleration = new Vec3(0,0,0);
   float particleAccelerationRange = 0;
   Vec3 emitterPosition = new Vec3(0,0,0);
@@ -235,11 +235,18 @@ public class ParticleSystem {
     return particleRadii;
   }
 
+  public void drawAllParticles() {
+    hint(ENABLE_DEPTH_SORT);
+    while (drawNextParticle()) {
+
+    }
+    hint(DISABLE_DEPTH_SORT);
+  }
+
   public boolean drawNextParticle() {
     if (partIdx < particleCount) {
       push();
       stroke(particleColors.get(partIdx).x, particleColors.get(partIdx).y, particleColors.get(partIdx).z);
-      // stroke(#E0D3ED, 1.f);
       strokeWeight(particleRadii.get(partIdx));
       Vec3 vel = new Vec3(particleVelocities.get(partIdx));
       float velMagnitude = vel.length();
@@ -257,13 +264,16 @@ public class ParticleSystem {
         point(particleCoords.get(partIdx).x, particleCoords.get(partIdx).y, particleCoords.get(partIdx).z);
       } else {
         push();
+        noStroke();
         translate(particleCoords.get(partIdx).x, particleCoords.get(partIdx).y, particleCoords.get(partIdx).z);
+        rotateY (-radians(theta+270));
         beginShape();
         texture(particleTexture);
-        vertex(-particleRadii.get(partIdx),particleRadii.get(partIdx),0,0,0);
-        vertex(particleRadii.get(partIdx),particleRadii.get(partIdx),0,particleTexture.width,0);
-        vertex(particleRadii.get(partIdx),-particleRadii.get(partIdx),0,particleTexture.width,particleTexture.height);
-        vertex(-particleRadii.get(partIdx),-particleRadii.get(partIdx),0,0,particleTexture.height);
+        float width_2 = particleRadii.get(partIdx);
+        vertex(-width_2,width_2,0,0,0);
+        vertex(width_2,width_2,0,particleTexture.width,0);
+        vertex(width_2,-width_2,0,particleTexture.width,particleTexture.height);
+        vertex(-width_2,-width_2,0,0,particleTexture.height);
         endShape();
         pop();
       }

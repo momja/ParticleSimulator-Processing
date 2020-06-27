@@ -14,132 +14,440 @@ import java.io.IOException;
 
 public class ParticleSimulator extends PApplet {
 
-// Shaders Found on the processing website: https://processing.org/tutorials/pshader/
 
+PShader unlitShader;
 
-PShader toon;
-
+int sizeX = 1280;
+int sizeY = 800;
+int slider = 0;
 Vec3 camLocation = new Vec3(0, 0, 0);
 Vec3 camLookAt = new Vec3(0, 0, 0);
 Vec3 camUp = new Vec3(0, -1, 0);
+Vec3 mouse3DPoint = null;
 
-float cameraRadius = 100; float phi = 90; float theta = 0;
+float cameraRadius = 30; float phi = 90; float theta = 0;
 PlanarParticleSystem particles = new PlanarParticleSystem(15000);
+ParticleSystem smoke = new ParticleSystem(1000);
+BoidSystem boids = new BoidSystem(700);
 PShape[] rigidBodies = new PShape[1];
+boolean particleSceneActive = false;
+boolean flockToLand = false;
 
 PShape house;
+PShape scarecrow;
+PShape collisionMesh;
 
 public void setup() {
   
-  frustum(-1.333f,1.333f,-1,1,1, 1000);
+  frustum(-0.666f,0.666f,-0.5f,0.5f,1,1000);
   surface.setTitle("Wind Simulation [Max Omdal]");
   camLocation = new Vec3(mouseX, height/2, (height/2) / tan(PI/6));
   camLookAt = new Vec3(0, 0, 0);
   camUp = new Vec3(0, -1, 0);
-
-  toon = loadShader("ToonFrag.glsl", "ToonVert.glsl");
-  toon.set("fraction", 1.0f);
   house = loadShape("house.obj");
-  rigidBodies[0] = house;
+  scarecrow = loadShape("scarecrow.obj");
+  collisionMesh = loadShape("houseColliderMesh.obj");
+  rigidBodies[0] = collisionMesh;
+  unlitShader = loadShader("unlit_frag.glsl", "unlit_vert.glsl");
 
   particles.emitterPosition = new Vec3(0,50,0);
-  particles.emitterRadius = 50;
+  particles.emitterRadius = 8;
+  particles.birthRate = 1000;
   particles.collisionTrigger = new SpawnEmitter();
+  particles.streakLength = 1;
+
+  smoke.emitterPosition = new Vec3(1.3f,3,2.5f);
+  smoke.birthRate = 60;
+  smoke.r = 0.15f;
+  smoke.particleSpeed = 0.3f;
+  smoke.speedRange = 0.1f;
+  smoke.particleLifespanMax = 10;
+  smoke.particleLifespanMin = 9.5f;
+  smoke.particleDirection = new Vec3(0,1,0);
+  smoke.particleDirectionRange = 0.13f;
+  smoke.particleAcceleration = new Vec3(0.01f,0,0.005f);
+  smoke.particleTexture = loadImage("smokeTex.png");
+
+  boids.boidModel = loadShape("bird.obj");
+  boids.boidPerchedModel = loadShape("birdSitting.obj");
 }
 
-public void update(float dt) {
+public Vec3 getMouseCast() {
+  Vec3 w = camLookAt.minus(camLocation).normalized();
+  Vec3 u = cross(w, camUp).normalized();
+  Vec3 v = cross(u, w).normalized();
+
+  w.mul(-1);
+
+  float m3dx = map(mouseX, 0, width, -0.666f, 0.666f);
+  float m3dy = map(mouseY, 0, height, -0.5f, 0.5f);
+  float m3dz = -1;
+
+  float m3dx_world = m3dx*u.x + m3dy*v.x + m3dz*w.x + camLocation.x;
+  float m3dy_world = m3dx*u.y + m3dy*v.y + m3dz*w.y + camLocation.y;
+  float m3dz_world = m3dx*u.z + m3dy*v.z + m3dz*w.z + camLocation.z;
+
+  Vec3 m_world = new Vec3(m3dx_world, m3dy_world, m3dz_world);
+  Vec3 rayDir = m_world.minus(camLocation);
+  return rayDir;
+}
+
+public void updateParticles(float dt) {
   particles.generateNewParticles(dt);
   particles.updateParticlePositions(dt);
   particles.checkParticlesForCollisions(rigidBodies);
   particles.updateParticleProperties(dt);
   particles.removeDeadParticles();
   particles.drawTriggers(dt);
-  while (particles.drawNextParticle()) {
+  particles.drawAllParticles();
+}
+
+public void updateBoids(float dt) {
+  if (mousePressed) {
+    Vec3 raycast = getMouseCast();
+    Vec3 p = testForCollisions(camLocation, raycast.normalized(), rigidBodies);
+    if (p != null) {
+      boids.tetherPoint = p;
+      boids.influenceToTetherPoint = 2;
+      mouse3DPoint = p;
+    }
+    if (mouse3DPoint != null) {
+      push();
+      translate(mouse3DPoint.x, mouse3DPoint.y, mouse3DPoint.z);
+      shape(scarecrow);
+      pop();
+    }
+  } else {
+    boids.tetherPoint = new Vec3(8,5,-4);
+    boids.influenceToTetherPoint = 0.03f;
+    mouse3DPoint = null;
   }
+  boids.updateBoidPositions(dt);
+  boids.checkForCollisions(rigidBodies);
+  boids.drawBoids();
+}
+
+public void updateSmoke(float dt) {
+  smoke.generateNewParticles(dt);
+  smoke.updateParticlePositions(dt);
+  smoke.updateParticleProperties(dt);
+  smoke.removeDeadParticles();
+  smoke.drawTriggers(dt);
+  shader(unlitShader);
+  smoke.drawAllParticles();
+  resetShader();
 }
 
 public void updateCamera() {
-  cameraRadius = mouseX/2 + 50;
   camLocation.x = cos(radians(theta))*cameraRadius;
-  camLocation.y = mouseY/3;
+  camLocation.y = PApplet.parseFloat(slider)/5;
   camLocation.z = sin(radians(theta))*cameraRadius;
-  if (!mousePressed) {
-    theta += 0.5f;
+}
+
+public void updateDisplay() {
+  push();
+  PGraphics displayTexture = createGraphics(sizeX,sizeY);
+  displayTexture.beginDraw();
+  displayTexture.noStroke();
+  textAlign(LEFT,TOP);
+  if (particleSceneActive) {
+    displayTexture.fill(255);
+    float totalParticles = smoke.particleCount + particles.particleCount;
+    for (CollisionTrigger t : particles.triggerCollection.triggers) {
+      totalParticles += ((SpawnEmitter)t).emitter.particleCount;
+    }
+    displayTexture.text("Particles: " + totalParticles, 50, 50);
+  } else {
+    displayTexture.fill(0);
+    displayTexture.text("Boids: " + boids.boidCount,50,50);
   }
+  displayTexture.text("FPS: " + PApplet.parseInt(frameRate),50,70);
+  displayTexture.endDraw();
+  shader(unlitShader);
+  beginShape(QUADS);
+  texture(displayTexture);
+  Vec3 hudLocation = camLocation.minus(camLookAt.minus(camLocation).normalized().times(5));
+  hint(DISABLE_DEPTH_TEST);
+  vertex(0,0,0,0);
+  vertex(width,0,displayTexture.width,0);
+  vertex(width,height,displayTexture.width,displayTexture.height);
+  vertex(0,height,0,displayTexture.height);
+  endShape(CLOSE);
+  pop();
+  resetShader();
+  hint(ENABLE_DEPTH_TEST);
+
+}
+
+public void keyPressed() {
+    if (key == ' ') {
+      // Switch Scenes
+      particleSceneActive = !particleSceneActive;
+    }
 }
 
 public void draw() {
   if (keyPressed) {
     if (key == 'w') {
-      particles.emitterPosition.x += 2;
-    } else if (key == 's') {
       particles.emitterPosition.x -= 2;
+    } else if (key == 's') {
+      particles.emitterPosition.x += 2;
     } else if (key == 'a') {
       particles.emitterPosition.z -= 2;
     } else if (key == 'd') {
       particles.emitterPosition.z += 2;
+    } else if (keyCode == UP) {
+      slider++;
+    }  if (keyCode == DOWN) {
+      slider--;
+    }  if (keyCode == LEFT) {
+      theta -= 1.1f;
+    }  if (keyCode == RIGHT) {
+      theta += 1.1f;
+    } if (key == 'm') {
+      boids.addBoid();
+    } else if (key == 'n') {
+      boids.loseBoid();
     }
+  }
+
+  if (flockToLand && boids.tetherPoint.y > -3) {
+    boids.tetherPoint.y -= 0.02f;
   }
   
   updateCamera();
 
+
+  pushMatrix();
   camera(camLocation.x, camLocation.y, camLocation.z,
          camLookAt.x,   camLookAt.y,   camLookAt.z,
          camUp.x,       camUp.y,       camUp.z);
-
-  shader(toon);
-  background(0); // Black Background
   directionalLight(150, 170, 180, 1, -1, -1);
-  shape(house,0,0);
-  update(1.0f/frameRate);
+  directionalLight(255, 255, 255, 1, -1, 1);
+  ambientLight(50,50,50,0,0,0);
+  if (particleSceneActive) {
+    // Display particle scene
+    background(10,10,15);
+    shape(house,0,0);
+    updateParticles(1.0f/frameRate);
+    updateSmoke(1.0f/frameRate);
+  } else {
+    // Display boids
+    background(200,170,50);
+    shape(house,0,0);
+    updateBoids(1.0f/frameRate);
+  }
+
+  popMatrix();
+
+  updateDisplay();
 }
 public class BoidSystem {
-    private ArrayList<Vec3> boidCoords;
-    // private ArrayList<Quaternion> boidOrientations;
-    private ArrayList<Vec3> boidVelocities;
+    // private ArrayList<Vec3> boidCoords;
+    // private ArrayList<Vec3> boidPrevCoords;
+    // // private ArrayList<Quaternion> boidOrientations;
+    // private ArrayList<Vec3> boidVelocities;
+    // private ArrayList<Float> perchedBoidCountdowns;
+    private ArrayList<Boid> boids;
+    private float width, height, length;
 
-    int boidCount = 10;
-    Vec3 boidCenterOfMass;
-    float boidSize = 10;
+    Vec3 boundingBoxOrigin = new Vec3(0,25,0);
+    float minX, maxX, minY, maxY, minZ, maxZ;
+
+    int boidCount = 100;
+    float boidSize = 2;
+    float maxSpeed = 100;
+    float separation = 2;
+    float visualDistance = 6;
+    float influenceToCenter = 0.02f;
+    Vec3 boidColor = new Vec3(0,0,0);
     PImage boidTexture = null;
     PShape boidModel = null;
+    PShape boidPerchedModel = null;
+    Vec3 tetherPoint = new Vec3(8,5,-4);
+    float influenceToTetherPoint = 0.03f;
 
-    public BoidSystem() {
-        boidCoords = new ArrayList<Vec3>();
-        // boidOrientations = new ArrayList<Quaternion>();
-        boidVelocities = new ArrayList<Vec3>();
+    public BoidSystem(int boidCount) {
+        // boidCoords = new ArrayList<Vec3>();
+        // boidPrevCoords = new ArrayList<Vec3>();
+        // // boidOrientations = new ArrayList<Quaternion>();
+        // boidVelocities = new ArrayList<Vec3>();
+        // perchedBoidCountdowns = new ArrayList<Float>();
+        boids = new ArrayList<Boid>();
+        setBoundingBox(boundingBoxOrigin, 100, 60, 100);
+        this.boidCount = boidCount;
         initializePositions();
     }
-    
-    public void initializePositions() {
-        for (int i = 0; i < boidCount; i++) {
 
+    public void setBoundingBox(Vec3 origin, float width, float height, float length) {
+        this.width = width;
+        this.height = height;
+        this.length = length;
+        this.boundingBoxOrigin = origin;
+
+        minX = origin.x - width/2;
+        maxX = origin.x + width/2;
+        minY = origin.y - height/2;
+        maxY = origin.y + height/2;
+        minZ = origin.z - length/2;
+        maxZ = origin.z + length/2;
+    }
+
+    public void checkForCollisions(PShape[] rigidBodies) {
+        // Check each boid to see if it has collided with the collision meshes
+        for (PShape rigidBody : rigidBodies) {
+        int triCount = rigidBody.getChildCount();
+        for (int i = 0; i < triCount; i++) {
+            PShape triangle = rigidBody.getChild(i);
+            int j = 0;
+            while(j < boidCount) {
+                Boid boid = boids.get(j);
+                Vec3 boidPosition = boid.coords;
+                if (boid.perchCountdown > 0 || boidPosition.y > 5 || boidPosition.x > 20 || boidPosition.x < -20 || boidPosition.z > 20 || boidPosition.z < -20) {
+                    j++;
+                    continue;
+                }
+                // TODO: Use Barycentric Coordinates to find if there is a collision with the surface
+                boolean collision = false;
+                Vec3 collisionPoint = new Vec3(0,0,0);
+
+                Vec3 rayOrigin = boidPosition;
+                Vec3 rayDirection = boidPosition.minus(boid.previousCoord);
+                float maxT = rayDirection.length();
+
+                if (maxT < 0.00001f) {
+                    j++;
+                    continue;
+                }
+
+                rayDirection.normalize();
+
+                PVector v1 = triangle.getVertex(0);
+                PVector v2 = triangle.getVertex(1);
+                PVector v3 = triangle.getVertex(2);
+
+                Vec3 vert1 = new Vec3(v1.x, v1.y, v1.z);
+                Vec3 vert2 = new Vec3(v2.x, v2.y, v2.z);
+                Vec3 vert3 = new Vec3(v3.x, v3.y, v3.z);
+
+                Vec3 e1 = vert2.minus(vert1);
+                Vec3 e2 = vert3.minus(vert1);
+
+                Vec3 surfaceNormal = cross(e1, e2);
+                // float x_0 = rayOrigin.x; float y_0 = rayOrigin.y; float z_0 = rayOrigin.z;
+                // float x_d = rayDirection.x; float y_d = rayDirection.y; float z_d = rayDirection.z;
+                float denominator = dot(surfaceNormal, rayDirection);
+                if (abs(denominator) <= 0.0001f) {
+                    // No ray plane intersection exists
+                    j++;
+                    continue;
+                }
+
+                float D = dot(vert1, surfaceNormal);
+
+                float numerator = -(dot(surfaceNormal, rayOrigin) - D);
+
+                float t = numerator/denominator;
+
+                if (t < 0) {
+                    // Haven't hit yet
+                    j++;
+                    continue;
+                }
+                
+                Vec3 p = rayOrigin.plus(rayDirection.times(t));
+
+                if (t < maxT && pointLiesOnTriangle(p, vert1, vert2, vert3, e1, e2)) {
+                    perchBoid(j, p, reflect(rayDirection, surfaceNormal));
+                }
+                j++;
+                }
+            }
+        }
+    }
+
+    public void perchBoid(int idx, Vec3 p, Vec3 launchDir) {
+        // Hold boid at current position for a ranged amount of time.
+        // Then release the boid in the direction provided
+        Boid boid = boids.get(idx);
+        boid.coords = p;
+        boid.perchCountdown = random(3,4);
+        boid.velocity = launchDir.normalized().times(maxSpeed/3);
+    }
+    
+    public void addBoid() {
+        Vec3 position = new Vec3(random(minX, maxX),
+                                     random(minY, maxY)/2,
+                                     random(minZ, maxZ));
+        Boid boid = new Boid();
+        boid.coords = position;
+        boid.previousCoord = position;
+        boid.perchCountdown = 0.f;
+
+        Vec3 velocity = new Vec3(random(-1,1),random(-1,1),random(-1,1));
+        velocity.normalize();
+        velocity.mul(random(maxSpeed/2, maxSpeed));
+        boid.velocity = velocity;
+
+        boids.add(boid);
+        boidCount++;
+    }
+
+    public void loseBoid() {
+        boids.remove(0);
+        boidCount--;
+    }
+
+    public void initializePositions() {
+        // Given the bounding box, we will randomly place our boids within this box
+        for (int i = 0; i < boidCount; i++) {
+            Vec3 position = new Vec3(random(minX, maxX),
+                                     random(minY, maxY)/2,
+                                     random(minZ, maxZ));
+            Boid boid = new Boid();
+            boid.coords = position;
+            boid.previousCoord = position;
+            boid.perchCountdown = 0.f;
+
+            Vec3 velocity = new Vec3(random(-1,1),random(-1,1),random(-1,1));
+            velocity.normalize();
+            velocity.mul(random(maxSpeed/2, maxSpeed));
+            boid.velocity = velocity;
+
+            boids.add(boid);
         }
     }
 
     public void updateBoidPositions(float dt) {
-        Vec3 v1, v2, v3;
-        for (int i = 0; i < boidCount; i++) {
-            v1 = flyTowardsCenter(i);
-            v2 = keepDistance(i);
-            v3 = matchVelocity(i);
+        Vec3 v1, v2, v3, v4;
+        for (Boid boid : boids) {
+            if(boid.perchCountdown > 0) {
+                boid.perchCountdown -= dt;
+                continue;
+            }
 
-            boidVelocities.get(i).add(v1.plus(v2).plus(v3));
-            boidCoords.get(i).add(boidVelocities.get(i));
-        }
+            v1 = flyTowardsCenter(boid);
+            v2 = keepDistance(boid);
+            v3 = matchVelocity(boid);
+            v4 = moveToTetherPoint(boid);
 
-        boidCenterOfMass = new Vec3(0,0,0);
-        for (int i = 0; i < boidCount; i++) {
-            boidCenterOfMass.add(boidCoords.get(i));
+            // Velocity
+            boid.velocity.add(v1.times(0.6f).plus(v2.times(0.6f)).plus(v3).plus(v4));
+            boid.velocity.y *= 0.9f;
+            boid.velocity.clamp(0, maxSpeed);
+            // Position
+            boid.previousCoord = new Vec3(boid.coords);
+            boid.coords.add(boid.velocity.times(dt));
+
+            boundPosition(boid);
         }
-        boidCenterOfMass = boidCenterOfMass.times(1.f/boidCount);
     }
 
     public void drawBoids() {
         if (boidTexture != null) {
-            for (int i = 0; i < boidCount; i++) {
+            for (Boid boid : boids) {
                 // Draw texture
-                Vec3 pos = boidCoords.get(i);
+                Vec3 pos = boid.coords;
                 push();
                 translate(pos.x, pos.y, pos.z);
                 beginShape();
@@ -153,71 +461,161 @@ public class BoidSystem {
             }
         }
         else if (boidModel != null) {
-            for (int i = 0; i < boidCount; i++) {
+            for (Boid boid : boids) {
                 // Draw boid model
-                Vec3 pos = boidCoords.get(i);
-                push();
+                Vec3 pos = boid.coords;
+                if (pos.distanceTo(camLocation) > 30) {
+                    push();
+                    stroke(boidColor.x, boidColor.y, boidColor.z);
+                    strokeWeight(3);
+                    point(pos.x, pos.y, pos.z);
+                    pop();
+                    continue;
+                }
+                Vec3 vel = boid.velocity.normalized();
+                pushMatrix();
                 translate(pos.x, pos.y, pos.z);
-                shape(boidModel);
-                pop();
+                Vec3 xz_vec = new Vec3(vel.x, 0, vel.z);
+                xz_vec.normalize();
+                float angle = acos(dot(xz_vec, new Vec3(0,0,1)));
+                if (cross(xz_vec, new Vec3(0,0,1)).y > 0) {
+                    rotateY(-angle-PI/2);
+                } else {
+                    rotateY(angle-PI/2);
+                }
+                if (boid.perchCountdown > 0) {
+                    shape(boidPerchedModel);
+                } else {
+                    shape(boidModel);
+                }
+                popMatrix();
             }
         }
         else {
-            for (int i = 0; i < boidCount; i++) {
+            for (Boid boid : boids) {
                 // Draw a point
-                Vec3 pos = boidCoords.get(i);
+                Vec3 pos = boid.coords;
                 push();
-                stroke(boidSize);
+                stroke(255);
+                strokeWeight(boidSize);
                 point(pos.x, pos.y, pos.z);
                 pop();
             }
         }
     }
 
-    private Vec3 flyTowardsCenter(int idx) {
+    private void boundPosition(Boid boid) {
+        Vec3 pos = boid.coords;
+        Vec3 vel = boid.velocity;
+        // Check for boids outside the bounding box
+        if (pos.x > maxX) {
+            pos.x = maxX;
+            vel.x = -20;
+        } else if (pos.x < minX) {
+            pos.x = minX;
+            vel.x = 20;
+        }
+        if (pos.y > maxY) {
+            pos.y = maxY;
+            vel.y = -20;
+        } else if (pos.y < minY) {
+            pos.y = minY;
+            vel.y = 20;
+        }
+        if (pos.z > maxZ) {
+            pos.z = maxZ;
+            vel.z = -20;
+        } else if (pos.z < minZ) {
+            pos.z = minZ;
+            vel.z = 20;
+        }
+    }
+
+    private Vec3 flyTowardsCenter(Boid boid) {
         // given an index of a certain boid,
         // find the center of mass of nearby boids
         // and return a weight in that direction
         
         // Fly towards the center of mass excluding the current boid
-        Vec3 perceivedCenterOfMass = boidCenterOfMass.times(boidCount).minus(boidCoords.get(idx)).times(1/(boidCount - 1));
-        return perceivedCenterOfMass.minus(boidCoords.get(idx)).times(0.01f);
+        Vec3 perceivedCenterOfMass = new Vec3(0,0,0);
+        int cnt = 0;
+        int i = 0;
+        for (Boid otherBoid : boids) {
+            if (otherBoid.equals(boid) || otherBoid.perchCountdown > 0) {
+                i++;
+                continue;
+            } else if (boid.coords.distanceTo(otherBoid.coords) < visualDistance) {
+                perceivedCenterOfMass.add(otherBoid.coords);
+                cnt++;
+            }
+            i++;
+        }
+        if (cnt > 0) {
+            perceivedCenterOfMass.mul(1.f/(cnt));
+        }
+        return perceivedCenterOfMass.minus(boid.coords).times(influenceToCenter);
     }
 
-    private Vec3 keepDistance(int idx) {
+    private Vec3 keepDistance(Boid boid) {
         // look at all the nearby boids and objects
         // and return a weight that maneuvers away from them
         Vec3 c = new Vec3(0,0,0);
-        Vec3 curBoidPosition = boidCoords.get(idx);
-        for (int i = 0; i < boidCount; i++) {
-            if (i == idx) {
+
+        int i = 0;
+        for (Boid otherBoid : boids) {
+            if (otherBoid.equals(boid)) {
+                i++;
                 continue;
             }
-            Vec3 otherBoidPosition = boidCoords.get(i);
-            Vec3 betweenVec = otherBoidPosition.minus(curBoidPosition);
-            if (betweenVec.length() < 100) {
+            Vec3 betweenVec = otherBoid.coords.minus(boid.coords);
+            if (betweenVec.length() < separation) {
                 c.subtract(betweenVec);
             }
+            i++;
         }
         return c;
     }
 
-    private Vec3 matchVelocity(int idx) {
+    private Vec3 matchVelocity(Boid boid) {
         // find the velocities of nearby boids and approximate it
-        Vec3 curBoidVelocty = boidVelocities.get(idx);
-        Vec3 newPosition = new Vec3(0,0,0);;
-        for (int i = 0; i < boidCount; i++) {
-            Vec3 otherBoidVelocity = boidVelocities.get(i);
-            if (i == idx) {
+        Vec3 curBoidVelocty = boid.velocity;
+        Vec3 newPosition = new Vec3(0,0,0);
+        int cnt = 0;
+        int i = 0;
+        for (Boid otherBoid : boids) {
+            if (otherBoid.equals(boid) || otherBoid.perchCountdown > 0) {
+                i++;
                 continue;
+            } else if (boid.coords.distanceTo(otherBoid.coords) < visualDistance) {
+                newPosition.add(otherBoid.velocity);
+                cnt++;
             }
-            newPosition.add(otherBoidVelocity);
+            i++;
         }
-        newPosition.mul(boidCount - 1);
+        if (cnt > 0) {
+            newPosition.mul(1.f/(cnt));
+        }
         newPosition.subtract(curBoidVelocty);
-        newPosition.mul(1f/8f);
+        newPosition.mul(1.f/8);
         return newPosition;
     }
+
+    public Vec3 moveToTetherPoint(Boid boid) {
+        return tetherPoint.minus(boid.coords).normalized().times(influenceToTetherPoint);
+    }
+
+    public Vec3 noisyMovement() {
+        return new Vec3(random(-maxSpeed/200, maxSpeed/200),
+                        random(-maxSpeed/200, maxSpeed/200),
+                        random(-maxSpeed/200, maxSpeed/200));
+    }
+}
+
+public class Boid {
+    Vec3 coords;
+    Vec3 previousCoord;
+    float perchCountdown;
+    Vec3 velocity;
 }
 public class CollisionTrigger {
     boolean isActive = false;
@@ -246,8 +644,8 @@ public class SpawnEmitter extends CollisionTrigger {
         emitter.birthRate = 10;
         emitter.emitterLifespan = 0.1f;
         emitter.r = 1.3f;
-        emitter.particleSpeed = 40;
-        emitter.speedRange = 20;
+        emitter.particleSpeed = 20;
+        emitter.speedRange = 10;
         emitter.particleDirection = new Vec3(0,1,0);
         emitter.particleDirectionRange = 0.1f;
         emitter.particleAcceleration = new Vec3(0,-500,0);
@@ -327,7 +725,7 @@ public class ParticleSystem {
   protected ArrayList<Float> particleStreakLength;
 
   int partIdx = 0;
-  int streakLength = 2;
+  int streakLength = 0;
   int particleCount = 0;
   int maxParticleCount;
   float particleLifespanMax = 5;
@@ -339,8 +737,8 @@ public class ParticleSystem {
   float r = 0.2f;
   float particleSpeed = 200;
   float speedRange = 50;
-  Vec3 particleDirection = new Vec3(0.05f,-1,0);
-  float particleDirectionRange = 0.05f;
+  Vec3 particleDirection = new Vec3(0,-1,0);
+  float particleDirectionRange = 0.07f;
   Vec3 particleAcceleration = new Vec3(0,0,0);
   float particleAccelerationRange = 0;
   Vec3 emitterPosition = new Vec3(0,0,0);
@@ -552,11 +950,18 @@ public class ParticleSystem {
     return particleRadii;
   }
 
+  public void drawAllParticles() {
+    hint(ENABLE_DEPTH_SORT);
+    while (drawNextParticle()) {
+
+    }
+    hint(DISABLE_DEPTH_SORT);
+  }
+
   public boolean drawNextParticle() {
     if (partIdx < particleCount) {
       push();
       stroke(particleColors.get(partIdx).x, particleColors.get(partIdx).y, particleColors.get(partIdx).z);
-      // stroke(#E0D3ED, 1.f);
       strokeWeight(particleRadii.get(partIdx));
       Vec3 vel = new Vec3(particleVelocities.get(partIdx));
       float velMagnitude = vel.length();
@@ -574,13 +979,16 @@ public class ParticleSystem {
         point(particleCoords.get(partIdx).x, particleCoords.get(partIdx).y, particleCoords.get(partIdx).z);
       } else {
         push();
+        noStroke();
         translate(particleCoords.get(partIdx).x, particleCoords.get(partIdx).y, particleCoords.get(partIdx).z);
+        rotateY (-radians(theta+270));
         beginShape();
         texture(particleTexture);
-        vertex(-particleRadii.get(partIdx),particleRadii.get(partIdx),0,0,0);
-        vertex(particleRadii.get(partIdx),particleRadii.get(partIdx),0,particleTexture.width,0);
-        vertex(particleRadii.get(partIdx),-particleRadii.get(partIdx),0,particleTexture.width,particleTexture.height);
-        vertex(-particleRadii.get(partIdx),-particleRadii.get(partIdx),0,0,particleTexture.height);
+        float width_2 = particleRadii.get(partIdx);
+        vertex(-width_2,width_2,0,0,0);
+        vertex(width_2,width_2,0,particleTexture.width,0);
+        vertex(width_2,-width_2,0,particleTexture.width,particleTexture.height);
+        vertex(-width_2,-width_2,0,0,particleTexture.height);
         endShape();
         pop();
       }
@@ -658,6 +1066,118 @@ public class PlanarParticleSystem extends ParticleSystem {
       particleCount++;
     }
   }
+}
+// Inspiration from https://www.cprogramming.com/tutorial/3d/quaternions.html
+
+public class Quaternion {
+    float x, y, z, w;
+    public Quaternion(float x, float y, float z, float w) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.w = w;
+        this.normalize();
+    }
+
+    public void normalize() {
+        float magnitude = sqrt(w*w + x*x + y*y + z*z);
+        w /= magnitude;
+        x /= magnitude;
+        y /= magnitude;
+        z /= magnitude;
+    }
+
+    public Quaternion times(Quaternion rhs) {
+        return new Quaternion(w*rhs.x + x*rhs.w + y*rhs.z - z*rhs.y,
+                              w*rhs.y - x*rhs.z + y*rhs.w + z*rhs.x,
+                              w*rhs.z - x*rhs.y - y*rhs.x + z*rhs.w,
+                              w*rhs.w - x*rhs.x - y*rhs.y - z*rhs.z);
+    }
+
+    public Vec3 toEulerAngles() {
+        // https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
+        Vec3 angles = new Vec3(0,0,0);
+
+        // roll (x-axis rotation)
+        float sinr_cosp = 2 * (w * x + y * z);
+        float cosr_cosp = 1 - 2 * (x * x + y * y);
+        angles.x = atan2(sinr_cosp, cosr_cosp);
+
+        // pitch (y-axis rotation)
+        float sinp = 2 * (w * y - z * x);
+        if (abs(sinp) >= 1)
+            if (sinp < 0) {
+                angles.y = -PI/2;
+            } else {
+                angles.y = PI/2;
+            }
+        else
+            angles.y = asin(sinp);
+
+        // yaw (z-axis rotation)
+        float siny_cosp = 2 * (w * z + x * y);
+        float cosy_cosp = 1 - 2 * (y * y + z * z);
+        angles.z = atan2(siny_cosp, cosy_cosp);
+
+        return angles;
+    }
+}
+public Vec3 testForCollisions(Vec3 origin, Vec3 dir, PShape[] rigidBodies) {
+ // Check each boid to see if it has collided with the collision meshes
+ Vec3 closestPoint = null;
+ float tMin = Float.MAX_VALUE;
+        for (PShape rigidBody : rigidBodies) {
+        int triCount = rigidBody.getChildCount();
+        for (int i = 0; i < triCount; i++) {
+            PShape triangle = rigidBody.getChild(i);
+            int j = 0;
+            Vec3 boidPosition = origin;
+
+            Vec3 rayOrigin = boidPosition;
+            Vec3 rayDirection = dir;
+            rayDirection.normalize();
+
+            PVector v1 = triangle.getVertex(0);
+            PVector v2 = triangle.getVertex(1);
+            PVector v3 = triangle.getVertex(2);
+
+            Vec3 vert1 = new Vec3(v1.x, v1.y, v1.z);
+            Vec3 vert2 = new Vec3(v2.x, v2.y, v2.z);
+            Vec3 vert3 = new Vec3(v3.x, v3.y, v3.z);
+
+            Vec3 e1 = vert2.minus(vert1);
+            Vec3 e2 = vert3.minus(vert1);
+
+            Vec3 surfaceNormal = cross(e1, e2);
+            // float x_0 = rayOrigin.x; float y_0 = rayOrigin.y; float z_0 = rayOrigin.z;
+            // float x_d = rayDirection.x; float y_d = rayDirection.y; float z_d = rayDirection.z;
+            float denominator = dot(surfaceNormal, rayDirection);
+            if (abs(denominator) <= 0.0001f) {
+                // No ray plane intersection exists
+                continue;
+            }
+
+            float D = dot(vert1, surfaceNormal);
+
+            float numerator = -(dot(surfaceNormal, rayOrigin) - D);
+
+            float t = numerator/denominator;
+
+            if (t < 0) {
+                // Haven't hit yet
+                continue;
+            }
+            
+            Vec3 p = rayOrigin.plus(rayDirection.times(t));
+
+            if (t < tMin && pointLiesOnTriangle(p, vert1, vert2, vert3, e1, e2)) {
+                closestPoint = p;
+                t = tMin;
+            }
+            
+        }
+        }
+    return closestPoint;
 }
 //Vector Library [2D]
 //CSCI 5611 Vector 3 Library [Incomplete]
@@ -815,6 +1335,17 @@ public class Vec3 {
   public float distanceTo(Vec3 rhs){
     return this.minus(rhs).length();
   }
+
+  public void clamp(float minLength, float maxLength) {
+    float curLength = length();
+    if (curLength > maxLength) {
+      this.normalize();
+      this.mul(maxLength);
+    } else if (curLength < minLength) {
+      this.normalize();
+      this.mul(minLength);
+    }
+  }
 }
 
 public Vec3 interpolate(Vec3 a, Vec3 b, float t){
@@ -831,6 +1362,11 @@ public Vec3 cross(Vec3 a, Vec3 b){
 
 public Vec3 projAB(Vec3 a, Vec3 b){
   return b.times(dot(a, b));
+}
+
+public Vec3 reflect(Vec3 d, Vec3 n) {
+  Vec3 r = d.minus(n.times(dot(d,n.normalized())*2));
+  return r;
 }
 
 public boolean pointLiesOnTriangle(Vec3 point, Vec3 vert1, Vec3 vert2, Vec3 vert3, Vec3 e1, Vec3 e2) {
@@ -977,7 +1513,7 @@ class Camera
   PVector negativeTurn;
   PVector positiveTurn;
 };
-  public void settings() {  size(640,480,P3D); }
+  public void settings() {  size(1280,800,P3D); }
   static public void main(String[] passedArgs) {
     String[] appletArgs = new String[] { "ParticleSimulator" };
     if (passedArgs != null) {
