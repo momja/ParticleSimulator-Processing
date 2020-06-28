@@ -1,5 +1,5 @@
 class HeadsUpDisplay {
-    public boolean showFrameRate;
+    public boolean showFrameRate = true;
     public PFont font;
     public float fontSize;
     public color defaultColor = color(0, 0, 0);
@@ -8,26 +8,15 @@ class HeadsUpDisplay {
     }
 
     public void draw() {
+        camera();
+        hint(DISABLE_DEPTH_TEST);
         push();
         noLights();
-        PGraphics displayTexture = createGraphics(width,height);
-        displayTexture.beginDraw();
-        displayTexture.noStroke();
-        displayTexture.textMode(MODEL);
-        textAlign(LEFT,TOP);
-        displayTexture.text("FPS: " + int(frameRate),50,70);
-        displayTexture.endDraw();
-        shader(unlitShader);
-        beginShape(QUADS);
-        texture(displayTexture);
-        hint(DISABLE_DEPTH_TEST);
-        vertex(0,0,0,0);
-        vertex(width,0,displayTexture.width,0);
-        vertex(width,height,displayTexture.width,displayTexture.height);
-        vertex(0,height,0,displayTexture.height);
-        endShape(CLOSE);
+        textMode(MODEL);
+        textSize(24);
+        textAlign(LEFT, TOP);
+        text("fps "+round(frameRate), 10, 10);
         pop();
-        resetShader();
         hint(ENABLE_DEPTH_TEST);
     }
 

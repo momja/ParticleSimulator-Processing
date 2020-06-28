@@ -1,8 +1,8 @@
 
 PShader unlitShader;
 
-int sizeX = 1280;
-int sizeY = 800;
+int sizeX = 640;
+int sizeY = 480;
 int slider = 0;
 Vec3 camLocation = new Vec3(0, 0, 0);
 Vec3 camLookAt = new Vec3(0, 0, 0);
@@ -16,15 +16,16 @@ BoidSystem boids = new BoidSystem(700);
 PShape[] rigidBodies = new PShape[1];
 boolean particleSceneActive = false;
 boolean flockToLand = false;
+HeadsUpDisplay hud = new HeadsUpDisplay();
 
 PShape house;
 PShape scarecrow;
 PShape collisionMesh;
 
 void setup() {
-  size(1280,800,P3D);
-  frustum(-0.666,0.666,-0.5,0.5,1,1000);
-  surface.setTitle("Wind Simulation [Max Omdal]");
+  size(640,480,OPENGL);
+  perspective(radians(60), 1+1.f/3, 1, 1000);
+  surface.setTitle("Particle Simulation [Max Omdal]");
   camLocation = new Vec3(mouseX, height/2, (height/2) / tan(PI/6));
   camLookAt = new Vec3(0, 0, 0);
   camUp = new Vec3(0, -1, 0);
@@ -128,40 +129,6 @@ void updateCamera() {
   camLocation.z = sin(radians(theta))*cameraRadius;
 }
 
-void updateDisplay() {
-  push();
-  PGraphics displayTexture = createGraphics(sizeX,sizeY);
-  displayTexture.beginDraw();
-  displayTexture.noStroke();
-  textAlign(LEFT,TOP);
-  if (particleSceneActive) {
-    displayTexture.fill(255);
-    float totalParticles = smoke.particleCount + particles.particleCount;
-    for (CollisionTrigger t : particles.triggerCollection.triggers) {
-      totalParticles += ((SpawnEmitter)t).emitter.particleCount;
-    }
-    displayTexture.text("Particles: " + totalParticles, 50, 50);
-  } else {
-    displayTexture.fill(0);
-    displayTexture.text("Boids: " + boids.boidCount,50,50);
-  }
-  displayTexture.text("FPS: " + int(frameRate),50,70);
-  displayTexture.endDraw();
-  shader(unlitShader);
-  beginShape(QUADS);
-  texture(displayTexture);
-  Vec3 hudLocation = camLocation.minus(camLookAt.minus(camLocation).normalized().times(5));
-  hint(DISABLE_DEPTH_TEST);
-  vertex(0,0,0,0);
-  vertex(width,0,displayTexture.width,0);
-  vertex(width,height,displayTexture.width,displayTexture.height);
-  vertex(0,height,0,displayTexture.height);
-  endShape(CLOSE);
-  pop();
-  resetShader();
-  hint(ENABLE_DEPTH_TEST);
-}
-
 void keyPressed() {
     if (key == ' ') {
       // Switch Scenes
@@ -200,7 +167,6 @@ void draw() {
   
   updateCamera();
 
-
   pushMatrix();
   camera(camLocation.x, camLocation.y, camLocation.z,
          camLookAt.x,   camLookAt.y,   camLookAt.z,
@@ -223,5 +189,5 @@ void draw() {
 
   popMatrix();
 
-  updateDisplay();
+  hud.draw();
 }
